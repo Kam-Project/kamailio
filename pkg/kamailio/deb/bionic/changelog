@@ -1,8 +1,14 @@
-kamailio (5.3.7.1) unstable; urgency=medium
+kamailio (5.3.8.1) unstable; urgency=medium
 
-  * version set 5.3.7.1
+  * version set 5.3.8.1
 
- -- Federico Cabiddu <federico.cabiddu@gmail.com>  Thursday, 19 Nov 2020 10:40:09 +0100
+-- Federico Cabiddu <federico.cabiddu@gmail.com>  Sunday, 23 Jan 2021 07:48:00 +0100
+
+kamailio (5.3.8) unstable; urgency=medium
+
+  * version set to 5.3.8
+
+ -- Victor Seva <vseva@debian.org>  Mon, 21 Dec 2020 15:45:00 +0000
 
 kamailio (5.3.7) unstable; urgency=medium
 

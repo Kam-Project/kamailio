@@ -281,7 +281,7 @@ int ds_set_attrs(ds_dest_t *dest, str *vattrs)
 	param_hooks_t phooks;
 	param_t *pit = NULL;
 	str param;
-	int tmp_rweight = 0;
+	int tmp_ival = 0;
 	str sattrs;
 
 	if(vattrs == NULL || vattrs->len <= 0) {
@@ -316,7 +316,15 @@ int ds_set_attrs(ds_dest_t *dest, str *vattrs)
 			str2sint(&pit->body, &dest->attrs.congestion_control);
 		} else if(pit->name.len == 6
 				  && strncasecmp(pit->name.s, "weight", 6) == 0) {
-			str2sint(&pit->body, &dest->attrs.weight);
+			tmp_ival = 0;
+			str2sint(&pit->body, &tmp_ival);
+			if(tmp_ival >= 1 && tmp_ival <= 100) {
+				dest->attrs.weight = tmp_ival;
+			} else {
+				dest->attrs.weight = 0;
+				LM_ERR("weight %d not in 1-100 range - ignoring destination",
+						tmp_ival);
+			}
 		} else if(pit->name.len == 7
 				  && strncasecmp(pit->name.s, "maxload", 7) == 0) {
 			str2sint(&pit->body, &dest->attrs.maxload);
@@ -328,12 +336,13 @@ int ds_set_attrs(ds_dest_t *dest, str *vattrs)
 			dest->attrs.sockname = pit->body;
 		} else if(pit->name.len == 7
 				  && strncasecmp(pit->name.s, "rweight", 7) == 0) {
-			tmp_rweight = 0;
-			str2sint(&pit->body, &tmp_rweight);
-			if(tmp_rweight >= 1 && tmp_rweight <= 100) {
-				dest->attrs.rweight = tmp_rweight;
+			tmp_ival = 0;
+			str2sint(&pit->body, &tmp_ival);
+			if(tmp_ival >= 1 && tmp_ival <= 100) {
+				dest->attrs.rweight = tmp_ival;
 			} else {
-				LM_ERR("rweight %d not in 1-100 range; skipped", tmp_rweight);
+				dest->attrs.rweight = 0;
+				LM_WARN("rweight %d not in 1-100 range - ignoring", tmp_ival);
 			}
 		} else if(pit->name.len == 9
 				&& strncasecmp(pit->name.s, "ping_from", 9) == 0) {
@@ -466,19 +475,19 @@ ds_dest_t *pack_dest(str iuri, int flags, int priority, str *attrs)
 	strncpy(hn, puri.host.s, puri.host.len);
 	hn[puri.host.len] = '\0';
 
-	/* Do a DNS-Lookup for the Host-Name: */
-	he = resolvehost(hn);
-	if(he == 0) {
-		if(dp->flags & DS_NODNSARES_DST) {
-			dp->irmode |= DS_IRMODE_NOIPADDR;
-		} else {
+	/* Do a DNS-Lookup for the Host-Name, if not disabled via dst flags */
+	if(dp->flags & DS_NODNSARES_DST) {
+		dp->irmode |= DS_IRMODE_NOIPADDR;
+	} else {
+		he = resolvehost(hn);
+		if(he == 0) {
 			LM_ERR("could not resolve %.*s (missing no-probing flag?!?)\n",
 					puri.host.len, puri.host.s);
 			goto err;
+		} else {
+			/* Store hostent in the dispatcher structure */
+			hostent2ip_addr(&dp->ip_address, he, 0);
 		}
-	} else {
-		/* Store hostent in the dispatcher structure */
-		hostent2ip_addr(&dp->ip_address, he, 0);
 	}
 
 	/* Copy the port out of the URI */
@@ -642,6 +651,10 @@ int dp_init_relative_weights(ds_set_t *dset)
 	/* if the array was not completely filled (i.e., the sum of rweights is
 	 * less than 100 due to truncated), then use last address to fill the rest */
 	last_insert = t > 0 ? dset->rwlist[t - 1] : (unsigned int)(dset->nr - 1);
+	if(t < 100) {
+		LM_INFO("extra rweight %d for last active destination in group %d\n",
+				(100-t), dset->id);
+	}
 	for(j = t; j < 100; j++)
 		dset->rwlist[j] = last_insert;
 
@@ -695,6 +708,10 @@ int dp_init_weights(ds_set_t *dset)
 	}
 	/* if the array was not completely filled (i.e., the sum of weights is
 	 * less than 100), then use last address to fill the rest */
+	if(t < 100) {
+		LM_INFO("extra weight %d for last destination in group %d\n",
+				(100-t), dset->id);
+	}
 	for(; t < 100; t++)
 		dset->wlist[t] = (unsigned int)(dset->nr - 1);
 randomize:
@@ -3077,6 +3094,10 @@ int ds_is_addr_from_set(sip_msg_t *_m, struct ip_addr *pipaddr,
 	pv_value_t val;
 	int j;
 	for(j = 0; j < node->nr; j++) {
+		if(node->dlist[j].irmode & DS_IRMODE_NOIPADDR) {
+			/* dst record using hotname with dns not done - no ip to match */
+			continue;
+		}
 		if(ip_addr_cmp(pipaddr, &node->dlist[j].ip_address)
 				&& ((mode & DS_MATCH_NOPORT) || node->dlist[j].port == 0
 						   || tport == node->dlist[j].port)
