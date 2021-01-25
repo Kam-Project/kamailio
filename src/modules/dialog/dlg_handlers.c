@@ -1747,45 +1747,58 @@ int dlg_run_event_route(dlg_cell_t *dlg, sip_msg_t *msg, int ostate, int nstate)
 	int h_entry=0;
 	int h_id=0;
 	dlg_cell_t *dlg0 = NULL;
+	dlg_entry_t *d_entry;
 
 	if(dlg==NULL)
 		return -1;
-	if(ostate==nstate)
-		return 0;
+
+	d_entry = &(d_table->entries[dlg->h_entry]);
+	dlg_lock( d_table, d_entry);
 
 	rt = -1;
 	if(dlg_event_callback.s==NULL || dlg_event_callback.len<=0) {
-		if(nstate==DLG_STATE_CONFIRMED_NA) {
+		if(nstate==DLG_STATE_CONFIRMED_NA && ((dlg->dflags&DLG_FLAG_EVENTRT_START) == 0)) {
 			rt = dlg_event_rt[DLG_EVENTRT_START];
+			dlg->dflags |= DLG_FLAG_EVENTRT_START;
 		} else if(nstate==DLG_STATE_DELETED) {
-			if(ostate==DLG_STATE_CONFIRMED || ostate==DLG_STATE_CONFIRMED_NA) {
-				rt = dlg_event_rt[DLG_EVENTRT_END];
-			} else if(ostate==DLG_STATE_UNCONFIRMED || ostate==DLG_STATE_EARLY) {
+			if(ostate==DLG_STATE_UNCONFIRMED || ostate==DLG_STATE_EARLY && ((dlg->dflags&DLG_FLAG_EVENTRT_FAILED) == 0)) {
 				rt = dlg_event_rt[DLG_EVENTRT_FAILED];
-			}
+				dlg->dflags |= DLG_FLAG_EVENTRT_FAILED;
+			} else if (((dlg->dflags&DLG_FLAG_EVENTRT_FAILED) == 0) && ((dlg->dflags&DLG_FLAG_EVENTRT_END) == 0)) {
+				rt = dlg_event_rt[DLG_EVENTRT_END];
+				dlg->dflags |= DLG_FLAG_EVENTRT_END;
+      }
 		}
-		if(rt==-1 || event_rt.rlist[rt]==NULL)
+		if(rt==-1 || event_rt.rlist[rt]==NULL) {
+	    dlg_unlock( d_table, d_entry);
 			return 0;
+		}
 	}  else {
-		if(nstate==DLG_STATE_CONFIRMED_NA) {
+		if(nstate==DLG_STATE_CONFIRMED_NA && !dlg->dflags&DLG_FLAG_EVENTRT_START) {
 			evname.s = "dialog:start";
 			evname.len = sizeof("dialog:start") - 1;
+			dlg->dflags |= DLG_FLAG_EVENTRT_START;
 		} else if(nstate==DLG_STATE_DELETED) {
-			if(ostate==DLG_STATE_CONFIRMED || ostate==DLG_STATE_CONFIRMED_NA) {
-				evname.s = "dialog:end";
-				evname.len = sizeof("dialog:end") - 1;
-			} else if(ostate==DLG_STATE_UNCONFIRMED || ostate==DLG_STATE_EARLY) {
+			if(ostate==DLG_STATE_UNCONFIRMED || ostate==DLG_STATE_EARLY && !dlg->dflags&DLG_FLAG_EVENTRT_FAILED) {
 				evname.s = "dialog:failed";
 				evname.len = sizeof("dialog:failed") - 1;
+				dlg->dflags |= DLG_FLAG_EVENTRT_FAILED;
+			} else if (!dlg->dflags&DLG_FLAG_EVENTRT_FAILED && !dlg->dflags&DLG_FLAG_EVENTRT_END){
+				evname.s = "dialog:end";
+				evname.len = sizeof("dialog:end") - 1;
+				dlg->dflags |= DLG_FLAG_EVENTRT_END;
 			}
 		}
 		keng = sr_kemi_eng_get();
 		if(keng==NULL) {
 			LM_DBG("event callback (%s) set, but no cfg engine\n",
 					dlg_event_callback.s);
+	    dlg_unlock( d_table, d_entry);
 			return 0;
 		}
 	}
+	
+	dlg_unlock( d_table, d_entry);
 
 	if(rt>=0 || dlg_event_callback.len>0) {
 		if(msg==NULL)

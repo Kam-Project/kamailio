@@ -71,6 +71,10 @@
 #define DLG_FLAG_CHANGED_PROF  (1<<10)/*!< dialog-profiles changed DMQ*/
 #define DLG_FLAG_DB_LOAD_EXTRA (1<<12)/*!< dialog loaded extra from db */
 
+#define DLG_FLAG_EVENTRT_START  (1<<13)
+#define DLG_FLAG_EVENTRT_END    (1<<14)
+#define DLG_FLAG_EVENTRT_FAILED (1<<15)
+
 /* internal flags stored in db */
 #define DLG_IFLAG_TIMEOUTBYE        (1<<0) /*!< send bye on time-out */
 #define DLG_IFLAG_KA_SRC            (1<<1) /*!< send keep alive to src */
